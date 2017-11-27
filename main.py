@@ -19,6 +19,7 @@ fh.setLevel(logging.DEBUG)
 logger.addHandler(fh)
 logger.info("Inici")
 
+#Turn Status
 CMONSTER = 0
 CPLAYER = 1
 CBUY = 2
@@ -29,6 +30,8 @@ PTEND = 7
 MTSPELLS = 8
 MTEND = 9
 
+#Other Constants
+CTYPE = ["relic", "gem", "spell"]
 
 class Card():
     def __init__(self, name):
@@ -37,11 +40,52 @@ class Card():
             self.name = name
             self.action = all_cards[name][1]
             self.owner = None
+            self.type = all_cards[name][2]
         else:
             self.cost = 0
             self.name = "TEST"
             self.action = Action("NONE",spark)
             self.owner = None
+            self.type = ""
+    def __str__(self):
+        return " Cost: {} -- Name: {} -- Action: {}".format(self.cost, self.name, self.action)
+    def __call__(self):
+        self.action.act(self)
+
+class MCard():
+    def __init__(self, monster, name):
+        if name in monster_cards['basic']:
+            info = monster_cards['basic'][name]
+        elif name in monster_cards['monster']:
+            info = monster_cards[monster][name]
+        else:
+            info = [""]
+
+        if info[0] == "attack":
+            self.type = info[0]
+            self.name = name
+            self.action = Action(info[1][0],info[1][1])
+            self.owner = None
+            self.life = None
+            self.discard = None
+        elif info[0] == "minion":
+            self.type = info[0]
+            self.name = name
+            self.action = Action(info[1][0], info[1][1])
+            self.owner = None
+            self.life = info[2]
+            self.discard = None
+        elif info[0] == "power":
+            self.type = info[0]
+            self.name = name
+            self.action = Action(info[1][0], info[1][1])
+            self.discard = info[2]
+            self.owner = None
+        else:
+            self.name = "TEST"
+            self.action = Action("NONE",spark)
+            self.owner = None
+            self.type = ""
     def __str__(self):
         return " Cost: {} -- Name: {} -- Action: {}".format(self.cost, self.name, self.action)
     def __call__(self):
@@ -53,6 +97,46 @@ class Action():
         self.act = act
     def __str__(self):
         return "{}".format(self.txt)
+
+
+class Deck():
+    def __init__(self, owner=None):
+        self.cards = []
+        self.player = owner
+    def __getitem__(self, item):
+        return self.cards[item]
+    def __len__(self):
+        return len(self.cards)
+    def __str__(self):
+        for x in self.cards:
+            print(x)
+        return ""
+    def __iter__(self):
+        return self.cards.__iter__()
+    def add(self, card):
+        card.owner = self.player
+        self.cards.append(card)
+    def draw(self, idx=None):
+        if idx:
+            return self.cards.pop(idx)
+        else:
+            return self.cards.pop()
+    def shuffle(self):
+        import random
+        random.shuffle(self.cards)
+    def u(self, f=None):
+        l = []
+        for idx, c in enumerate(self):
+            if f:
+                l.append(uB(str(c), f, idx))
+            else:
+                l.append(uB(str(c)))
+        return uLB(l)
+    def u_narrow(self):
+        l = []
+        for c in self:
+            l.append(uT(str(c.name)))
+        return uLB(l)
 
 class Breach():
     status_list = [(1, None, None), (0, 2, 0), (0, 4, 2), (0, 6, 2), (0, 9, 3)]
@@ -87,17 +171,22 @@ class Breach():
         self.costTurn = self.status_list[status][2]
     def turn(self):
         if self.status and self.player.aether >= self.costTurn:
-            self.change_status(self.status - 1)
             self.player.aether -= self.costTurn
+            self.change_status(self.status - 1)
+
             self.opentmp = 1
         else:
             log("Already opened")
+    def bturn(self,b):
+        turn()
     def open(self):
         if self.status and self.player.aether >= self.costOpen:
+            self.player.aether -= self.costOpen
             self.change_status(0)
-            self.player.aether -= self.costTurn
         else:
             log("Already opened")
+    def bopen(self,b):
+        open()
     def set_spell(self, c):
         if self.open or self.opentmp:
             if self.spell is None:
@@ -123,8 +212,8 @@ class Breach():
             return uA(uF(uP(l),'top'),'opened')
 
         else:
-            l.append(uB("Open: {} Ae".format(self.costOpen)))
-            l.append(uB("Turn: {} Ae".format(self.costTurn)))
+            l.append(uB("Open: {} Ae".format(self.costOpen),self.bopen))
+            l.append(uB("Turn: {} Ae".format(self.costTurn),self.bturn))
             return uPad(uF(uP(l),'top'),left=1,right=1)
 
 class Player():
@@ -205,50 +294,18 @@ class Player():
         p = uLineB(uA(uP([(5 , cb), ("weight", 1, i), ("weight", 2, cp)]),"default"), title=self.name)
         return p
 
-class Deck():
-    def __init__(self, owner=None):
-        self.cards = []
-        self.player = owner
-    def __getitem__(self, item):
-        return self.cards[item]
-    def __len__(self):
-        return len(self.cards)
-    def __str__(self):
-        for x in self.cards:
-            print(x)
-        return ""
-    def __iter__(self):
-        return self.cards.__iter__()
-    def add(self, card):
-        card.owner = self.player
-        self.cards.append(card)
-    def draw(self, idx=None):
-        if idx:
-            return self.cards.pop(idx)
-        else:
-            return self.cards.pop()
-    def shuffle(self):
-        import random
-        random.shuffle(self.cards)
-    def u(self, f=None):
-        l = []
-        for idx, c in enumerate(self):
-            if f:
-                l.append(uB(str(c), f, idx))
-            else:
-                l.append(uB(str(c)))
-        return uLB(l)
-    def u_narrow(self):
-        l = []
-        for c in self:
-            l.append(uT(str(c.name)))
-        return uLB(l)
-
 class Monster():
     def __init__(self):
         self.life = 50
         self.name = "Cthulhu pelut"
         self.world = None
+        self.deck = Deck(self)
+        self.playzone = Deck(self)
+        self.discard = Deck(self)
+    def activate(self):
+        for c in self.playzone:
+            log("Playing {}".format(c.name))
+            c()
     def end_turn(self):
         log("End of turn {}".format(self.name))
     def u(self):
@@ -257,7 +314,6 @@ class Monster():
             ('weight', 1, uT(str(self.world.turn_order))),
             urwid.Padding(urwid.BigText(str(self.life), urwid.font.HalfBlock5x4Font()), 'right', width='clip',right=1),
         ])
-
         m = uLineB(uA(uF(mc),'default'), title=self.name)
         return m
 
@@ -272,6 +328,7 @@ class World():
         self.log = uLB([uT("")])
         self.status = CMONSTER
         self.turn_order = []
+        self.gravehold = 30
         for c in all_cards:
             self.allCards[c] = Card(c)
     def __str__(self):
@@ -341,6 +398,11 @@ class World():
         log("Added monster: {}".format(monster.name))
     def bsetMonster(self, b, idx):
         self.setMonster(Monster())
+        for c in monster_cards['basic']:
+            if monster_cards['basic'][c][0] == "attack":
+                self.monster.deck.add()
+            elif monster_cards['basic'][c][0] == "power":
+            elif monster_cards['basic'][c][0] == "minion":
         self.status = CPLAYER
         self.newGame(b)
     def createBuyDeck(self, card):
@@ -439,7 +501,7 @@ class World():
         lBuy = uF(uT("NO BUY DECKS"),'middle') if len(lb) == 0 else uLB(lb)
         cPlayers = uF(uT("NO PLAYERS"),'middle') if len(lp) == 0 else uC(lp)
         bMonster = uF(uT("NO MONSTER"),'middle') if w.monster is None else (uA(w.monster.u(),'active') if w.monster == self.activePlayer else w.monster.u())
-        full = uP([("weight", 1, bMonster), (10, lBuy), ("weight", 2, cPlayers)])
+        full = uP([("weight", 1, bMonster), (10, lBuy), ("weight", 2, uLineB(cPlayers,title=self.gravehold))])
         p = uC([("weight", 4, full), ("weight", 1, w.log)])
         return p
 
@@ -453,17 +515,30 @@ def playerDamage(player, num):
     player.life -= num
 def modAether(player, num):
     player.aether += num
+def ghdamage(w, damage):
+    w.gravehold -= damage
 def crystal(carta):
     modAether(carta.owner, 1)
 def spark(carta):
     monsterDamage(carta.owner.world.monster, 1)
+def smite(carta):
+    unleash()
+    unleash()
+    ghdamage(2)
 
-starting_cards = {"Crystal": [0, Action("Gain 1 Aether", crystal)],
-              "Spark": [1, Action("Deal 1 damage", spark)]
+
+all_cards = {"Crystal": [0, Action("Gain 1 Aether", crystal),"gem"],
+              "Spark": [1, Action("Deal 1 damage", spark),"spell"],
               }
-all_cards = {"Crystal": [0, Action("Gain 1 Aether", crystal)],
-              "Spark": [1, Action("Deal 1 damage", spark)]
-              }
+
+monster_cards = {
+    "basic": { "Smite": ['attack',Action("Unleash twice.\nGravehold suffers 2 damage.",smite)],
+               "Aphotic Sun": ['power',Action("Unleash. The player with the most charges suffers 3 damage and\
+                loses all of their charges",aphotic_sun),Discard("Spend 7 Ae","aphotic_sun_discard")],
+               "Mangleroot": ['minion',Action("Gravehold suffers 3 damage. This minion suffers 2 damage",mangleroot), 12],
+    }
+
+}
 mages = {
     "Z'hana": {
         'hand': ['Crystal', 'Crystal', 'Crystal', 'Crystal', 'Eternal Ember'],
