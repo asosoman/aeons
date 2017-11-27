@@ -64,21 +64,22 @@ class MCard():
         if info[0] == "attack":
             self.type = info[0]
             self.name = name
-            self.action = Action(info[1][0],info[1][1])
+            self.action = info[1]
             self.owner = None
             self.life = None
             self.discard = None
         elif info[0] == "minion":
             self.type = info[0]
             self.name = name
-            self.action = Action(info[1][0], info[1][1])
+            self.action = info[1]
             self.owner = None
             self.life = info[2]
             self.discard = None
         elif info[0] == "power":
             self.type = info[0]
             self.name = name
-            self.action = Action(info[1][0], info[1][1])
+            self.power = info[1][0]
+            self.action = info[1][1]
             self.discard = info[2]
             self.owner = None
         else:
@@ -87,7 +88,14 @@ class MCard():
             self.owner = None
             self.type = ""
     def __str__(self):
-        return " Cost: {} -- Name: {} -- Action: {}".format(self.cost, self.name, self.action)
+        if self.type == "attack":
+            return " Name: {} -- Action: {}".format(self.name, self.action)
+        elif self.type == "power":
+            return " Name: {} -- Power: {} --  Action: {} -- Discard: {}".format(self.name, self.power, self.action, self.discard)
+        elif self.type == "minion":
+            return " Life: {} -- Name: {} -- Action: {}".format(self.life, self.name, self.action)
+        else:
+            return "No CARD VISIBLE"
     def __call__(self):
         self.action.act(self)
 
@@ -131,7 +139,7 @@ class Deck():
                 l.append(uB(str(c), f, idx))
             else:
                 l.append(uB(str(c)))
-        return uLB(l)
+        return uLB(urwid.SimpleFocusListWalker(l))
     def u_narrow(self):
         l = []
         for c in self:
@@ -310,8 +318,8 @@ class Monster():
         log("End of turn {}".format(self.name))
     def u(self):
         mc = uC([
-            ('weight',1,uT(str(self.world.turn_order))),
-            ('weight', 1, uT(str(self.world.turn_order))),
+            ('weight',2,uT(str(self.world.turn_order))),
+            ('weight', 10, uP([(500,self.deck.u())])),
             urwid.Padding(urwid.BigText(str(self.life), urwid.font.HalfBlock5x4Font()), 'right', width='clip',right=1),
         ])
         m = uLineB(uA(uF(mc),'default'), title=self.name)
@@ -399,10 +407,7 @@ class World():
     def bsetMonster(self, b, idx):
         self.setMonster(Monster())
         for c in monster_cards['basic']:
-            if monster_cards['basic'][c][0] == "attack":
-                self.monster.deck.add()
-            elif monster_cards['basic'][c][0] == "power":
-            elif monster_cards['basic'][c][0] == "minion":
+            self.monster.deck.add(MCard(self.monster,c))
         self.status = CPLAYER
         self.newGame(b)
     def createBuyDeck(self, card):
@@ -466,10 +471,12 @@ class World():
         elif str(key) in ("abcde"):
             self.activePlayer.play(ord(key) - 97)
         elif str(key) in ("lL"):
-            if self.loop.widget != w.log:
+            if isinstance(self.loop.widget,uC):
                 self.loop.widget = urwid.Overlay(uLineB(w.log, title="Log"), w.u(), "center", ('relative', 60),
                                                  "middle", ('relative', 60))
                 return
+            else:
+                self.redraw()
         else:
             return
         self.redraw()
@@ -501,7 +508,7 @@ class World():
         lBuy = uF(uT("NO BUY DECKS"),'middle') if len(lb) == 0 else uLB(lb)
         cPlayers = uF(uT("NO PLAYERS"),'middle') if len(lp) == 0 else uC(lp)
         bMonster = uF(uT("NO MONSTER"),'middle') if w.monster is None else (uA(w.monster.u(),'active') if w.monster == self.activePlayer else w.monster.u())
-        full = uP([("weight", 1, bMonster), (10, lBuy), ("weight", 2, uLineB(cPlayers,title=self.gravehold))])
+        full = uP([("weight", 1, bMonster), (10, lBuy), ("weight", 2, uLineB(cPlayers,title="Gravehold: {}".format(self.gravehold)))])
         p = uC([("weight", 4, full), ("weight", 1, w.log)])
         return p
 
@@ -521,20 +528,29 @@ def crystal(carta):
     modAether(carta.owner, 1)
 def spark(carta):
     monsterDamage(carta.owner.world.monster, 1)
+def unleash(carta):
+    log("unleash")
 def smite(carta):
     unleash()
     unleash()
     ghdamage(2)
-
+def aphotic_sun(carta):
+    unleash()
+    unleash()
+    ghdamage(2)
+def mangleroot(carta):
+    unleash()
+    unleash()
+    ghdamage(2)
 
 all_cards = {"Crystal": [0, Action("Gain 1 Aether", crystal),"gem"],
               "Spark": [1, Action("Deal 1 damage", spark),"spell"],
               }
 
 monster_cards = {
-    "basic": { "Smite": ['attack',Action("Unleash twice.\nGravehold suffers 2 damage.",smite)],
-               "Aphotic Sun": ['power',Action("Unleash. The player with the most charges suffers 3 damage and\
-                loses all of their charges",aphotic_sun),Discard("Spend 7 Ae","aphotic_sun_discard")],
+    "basic": { "Smite": ['attack',Action("Unleash twice.Gravehold suffers 2 damage.",smite)],
+               "Aphotic Sun": ['power',(2,Action("Unleash. The player with the most charges suffers 3 damage and loses all of their charges",aphotic_sun)),
+                               ("Spend 7 Ae","aphotic_sun_discard")],
                "Mangleroot": ['minion',Action("Gravehold suffers 3 damage. This minion suffers 2 damage",mangleroot), 12],
     }
 
