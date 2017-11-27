@@ -125,9 +125,12 @@ class Deck():
         card.owner = self.player
         self.cards.append(card)
     def draw(self, idx=None):
-        if idx:
+
+        if idx is not None:
+            log("Idx {}".format(idx))
             return self.cards.pop(idx)
         else:
+            log("No Idx {}".format(idx))
             return self.cards.pop()
     def shuffle(self):
         import random
@@ -147,7 +150,7 @@ class Deck():
         return uLB(l)
 
 class Breach():
-    status_list = [(1, None, None), (0, 2, 0), (0, 4, 2), (0, 6, 2), (0, 9, 3)]
+    status_list = [(1, 0, 0), (0, 2, 0), (0, 4, 2), (0, 6, 2), (0, 9, 3)]
     def __init__(self, player, status):
         if status not in (0, 1, 2, 3, 4):
             log("No valid value")
@@ -155,7 +158,7 @@ class Breach():
             self.spell = None
             self.player = player
             self.status = None
-            self.open = None
+            self.opened = 0
             self.costOpen = None
             self.costTurn = None
             self.opentmp = None
@@ -174,29 +177,32 @@ class Breach():
         return txt
     def change_status(self, status):
         self.status = status
-        self.open = self.status_list[status][0]
+        self.opened = self.status_list[status][0]
         self.costOpen = self.status_list[status][1]
         self.costTurn = self.status_list[status][2]
     def turn(self):
         if self.status and self.player.aether >= self.costTurn:
             self.player.aether -= self.costTurn
             self.change_status(self.status - 1)
-
             self.opentmp = 1
         else:
-            log("Already opened")
+            if self.status: log("Not enough aether")
+            else: log("Already opened")
     def bturn(self,b):
-        turn()
+        self.turn()
+        self.player.world.redraw()
     def open(self):
         if self.status and self.player.aether >= self.costOpen:
             self.player.aether -= self.costOpen
             self.change_status(0)
         else:
-            log("Already opened")
+            if self.status: log("Not enough aether")
+            else: log("Already opened")
     def bopen(self,b):
-        open()
+        self.open()
+        self.player.world.redraw()
     def set_spell(self, c):
-        if self.open or self.opentmp:
+        if self.opened or self.opentmp:
             if self.spell is None:
                 self.spell = c
             else:
@@ -215,7 +221,7 @@ class Breach():
             l.append(uT("Spell: {}".format(self.spell.name)))
         else:
             l.append(uT("Spell: -------"))
-        if self.open:
+        if self.opened:
             l.append(uT("Opened Breach"))
             return uA(uF(uP(l),'top'),'opened')
 
@@ -253,10 +259,14 @@ class Player():
             return
         self.phand[idxCard]()
         log("Played card {}".format(self.phand[idxCard].name))
-        self.playZone.add(self.phand.draw(idxCard))
+        carta_hand = self.phand.draw(idxCard)
+        log("TMP CARD {}".format(carta_hand.name))
+        self.playZone.add(carta_hand)
+        return
     def bplay(self, b, idxCard):
+        one_choice = isinstance(self.phand[idxCard].action.txt,str)
         self.play(idxCard)
-        self.world.loop.widget = self.world.u()
+        if one_choice: self.world.redraw()
     def buy(self, deck):
         if len(deck) == 0:
             log("Empty deck!!!")
@@ -267,6 +277,9 @@ class Player():
             self.pdiscard.add(deck.draw())
         else:
             log("Not enough aether to buy it")
+    def bbuy(self,b,d):
+        self.buy(d)
+        self.world.redraw()
     def buyCharge(self):
         if self.aether >= self.costCharges and self.charges < self.maxCharges:
             self.aether -= 2
@@ -274,6 +287,9 @@ class Player():
             log("Acquired charge")
         else:
             log("Action not allowed")
+    def bbuyCharge(self,b):
+        self.buyCharge()
+        self.world.redraw()
     def end_turn(self):
         self.aether = 0
         for x in range(len(self.playZone)):
@@ -462,27 +478,35 @@ class World():
         if str(key) in ("Q", "q"):
             raise urwid.ExitMainLoop()
         elif str(key) in ("12345"):
-            self.activePlayer.buy(w.buyzone[int(key) - 1])
+            self.activePlayer.bbuy(None,w.buyzone[int(key) - 1])
         elif str(key) in ("A"):
             self.activePlayer.end_turn()
             self.next_turn()
         elif str(key) in ("zZ"):
-            self.activePlayer.buyCharge()
+            self.activePlayer.bbuyCharge(None)
         elif str(key) in ("abcde"):
-            self.activePlayer.play(ord(key) - 97)
+            self.activePlayer.bplay(None,ord(key) - 97)
         elif str(key) in ("lL"):
             if isinstance(self.loop.widget,uC):
-                self.loop.widget = urwid.Overlay(uLineB(w.log, title="Log"), w.u(), "center", ('relative', 60),
+                self.loop.widget = urwid.Overlay(uLineB(w.log, title="Log"), w.u(),
+                                                 "center", ('relative', 60),
                                                  "middle", ('relative', 60))
                 return
             else:
                 self.redraw()
         else:
             return
-        self.redraw()
+
     def redraw(self):
         self.loop.widget = w.u()
     def popup(self, choices, f, title = None, create=None):
+        """
+        :param choices: choices for the popup
+        :param f: function to execute when a choice is clicked
+        :param title: title for the popup
+        :param create: True if during creation phase
+        :return: True
+        """
         l = []
         for idx, c in enumerate(choices):
             #urwid.connect_signal(button, "click", f, idx)
@@ -493,6 +517,7 @@ class World():
                                              "middle", ('relative', 60))
         else:
             self.loop.widget = urwid.Overlay(lb, w.u(), "center", ('relative', 60), "middle", ('relative', 60))
+        return
     def u(self):
         lb, lp = [], []
         for idx, d in enumerate(self.buyzone):
@@ -516,18 +541,22 @@ def log(txt):
     w.log.body.contents.append(uT(txt))
     w.log.focus_position = len(w.log.body.contents) - 1
     # w.log.set_text(w.log.get_text()[0]+'\n'+str(txt))
-def monsterDamage(monster, num):
-    monster.life -= num
+def monsterDamage(num):
+    w.monster.life -= num
+    return
 def playerDamage(player, num):
     player.life -= num
+    return
 def modAether(player, num):
     player.aether += num
+    return
 def ghdamage(w, damage):
     w.gravehold -= damage
+    return
 def crystal(carta):
     modAether(carta.owner, 1)
 def spark(carta):
-    monsterDamage(carta.owner.world.monster, 1)
+    monsterDamage(1)
 def unleash(carta):
     log("unleash")
 def smite(carta):
@@ -542,9 +571,20 @@ def mangleroot(carta):
     unleash()
     unleash()
     ghdamage(2)
+def torch(carta):
+    def torch_opt(b,idx):
+        if idx == 0:
+            monsterDamage(1)
+        elif idx == 1:
+            modAether(carta.owner, 1)
+        carta.owner.world.redraw()
+        return
+    carta.owner.world.popup(carta.action.txt,torch_opt,title=carta.name)
+    return
 
 all_cards = {"Crystal": [0, Action("Gain 1 Aether", crystal),"gem"],
               "Spark": [1, Action("Deal 1 damage", spark),"spell"],
+              "Torch": [0, Action(['Deal 1 damage','Get 1 ae'],torch),"spell"],
               }
 
 monster_cards = {
