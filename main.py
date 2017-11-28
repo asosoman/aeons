@@ -169,6 +169,7 @@ class Deck():
 
 class Breach():
     status_list = [(1, 0, 0), (0, 2, 0), (0, 4, 2), (0, 6, 2), (0, 9, 3)]
+
     def __init__(self, player, status):
         if status not in (0, 1, 2, 3, 4):
             log("No valid value")
@@ -330,16 +331,33 @@ class Player():
             self.breaches[0].set_spell(self.phand[idxCard])
         else:
             self.phand[idxCard]()
+            card_hand = self.phand.draw(idxCard)
+            self.playZone.add(card_hand)
         log("Played card {}".format(self.phand[idxCard].name))
-        carta_hand = self.phand.draw(idxCard)
-        log("TMP CARD {}".format(carta_hand.name))
-        self.playZone.add(carta_hand)
         return
 
     def play_(self, b, idxCard):
         one_choice = isinstance(self.phand[idxCard].action.txt,str)
         self.play(idxCard)
         if one_choice: self.world.redraw()
+
+    def play_breach(self,b,idx):
+        if b.label == "OK":
+            self.world.status = PTPLAY
+        else:
+            self.breaches[0].play()
+        self.world.redraw()
+
+    def play_spells(self):
+        l = []
+        for idx,b in enumerate(self.breaches):
+            if b.spell is not None:
+                l.append(b.spell.name)
+        if l:
+            self.world.popup(l + ['OK'], self.play_breach, title="Spells to Play")
+        else:
+            self.world.status = PTPLAY
+            self.world.redraw()
 
     def u(self):
         cb = uC([ b.u() for b in self.breaches ])
@@ -528,7 +546,6 @@ class World():
             log("CTURN")
             self.create_turn()
             self.next_turn()
-            self.status == PTSPELLS
             self.redraw()
 
     def next_turn(self):
@@ -538,10 +555,13 @@ class World():
         if pos == -1:
             # SELECCIONAR JUGADOR
             self.activePlayer = self.players[random.randrange(len(self.players))]
+            self.status = PTSPELLS
         elif pos == 0:
             self.activePlayer = self.monster
+            self.status = MTSPELLS
         else:
             self.activePlayer = self.players[pos-1]
+            self.status = PTSPELLS
         self.redraw()
 
     def popup(self, choices, f, title = None, create=None):
@@ -565,7 +585,11 @@ class World():
         return
 
     def redraw(self):
-        self.loop.widget = w.u()
+        log("Status: {}".format(self.status))
+        if self.status == PTSPELLS:
+            self.activePlayer.play_spells()
+        else:
+            self.loop.widget = w.u()
 
     def set_active_player(self,name):
         self.activePlayer = self.players[[p.name for p in self.players].index(name)]
