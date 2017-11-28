@@ -47,10 +47,14 @@ class Card():
             self.action = Action("NONE",spark)
             self.owner = None
             self.type = ""
+
     def __str__(self):
         return " Cost: {} -- Name: {} -- Action: {}".format(self.cost, self.name, self.action)
+
     def __call__(self):
         self.action.act(self)
+
+
 
 class MCard():
     def __init__(self, monster, name):
@@ -87,6 +91,7 @@ class MCard():
             self.action = Action("NONE",spark)
             self.owner = None
             self.type = ""
+
     def __str__(self):
         if self.type == "attack":
             return " Name: {} -- Action: {}".format(self.name, self.action)
@@ -96,13 +101,16 @@ class MCard():
             return " Life: {} -- Name: {} -- Action: {}".format(self.life, self.name, self.action)
         else:
             return "No CARD VISIBLE"
+
     def __call__(self):
         self.action.act(self)
+
 
 class Action():
     def __init__(self, txt, act):
         self.txt = txt
         self.act = act
+
     def __str__(self):
         return "{}".format(self.txt)
 
@@ -111,19 +119,25 @@ class Deck():
     def __init__(self, owner=None):
         self.cards = []
         self.player = owner
-    def __getitem__(self, item):
-        return self.cards[item]
-    def __len__(self):
-        return len(self.cards)
+
     def __str__(self):
         for x in self.cards:
             print(x)
         return ""
+
+    def __getitem__(self, item):
+        return self.cards[item]
+
     def __iter__(self):
         return self.cards.__iter__()
+
+    def __len__(self):
+        return len(self.cards)
+
     def add(self, card):
         card.owner = self.player
         self.cards.append(card)
+
     def draw(self, idx=None):
 
         if idx is not None:
@@ -132,9 +146,11 @@ class Deck():
         else:
             log("No Idx {}".format(idx))
             return self.cards.pop()
+
     def shuffle(self):
         import random
         random.shuffle(self.cards)
+
     def u(self, f=None):
         l = []
         for idx, c in enumerate(self):
@@ -143,11 +159,13 @@ class Deck():
             else:
                 l.append(uB(str(c)))
         return uLB(urwid.SimpleFocusListWalker(l))
+
     def u_narrow(self):
         l = []
         for c in self:
             l.append(uT(str(c.name)))
         return uLB(l)
+
 
 class Breach():
     status_list = [(1, 0, 0), (0, 2, 0), (0, 4, 2), (0, 6, 2), (0, 9, 3)]
@@ -163,6 +181,7 @@ class Breach():
             self.costTurn = None
             self.opentmp = None
             self.change_status(status)
+
     def __str__(self):
         txt = ""
         if self.open or self.opentmp:
@@ -175,11 +194,33 @@ class Breach():
         else:
             txt += "\nOpen Breach: {} aether\nTurn Breach: {} aether".format(self.costOpen, self.costTurn)
         return txt
+
     def change_status(self, status):
         self.status = status
         self.opened = self.status_list[status][0]
         self.costOpen = self.status_list[status][1]
         self.costTurn = self.status_list[status][2]
+
+    def end_turn(self):
+            self.opentmp = 0
+
+    def open(self):
+        if self.status and self.player.aether >= self.costOpen:
+            self.player.aether -= self.costOpen
+            self.change_status(0)
+        else:
+            if self.status: log("Not enough aether")
+            else: log("Already opened")
+
+    def open_(self, b):
+        self.open()
+        self.player.world.redraw()
+
+    def play(self):
+        self.spell()
+        self.player.pdiscard.add(self.spell)
+        self.spell = None
+
     def turn(self):
         if self.status and self.player.aether >= self.costTurn:
             self.player.aether -= self.costTurn
@@ -188,19 +229,11 @@ class Breach():
         else:
             if self.status: log("Not enough aether")
             else: log("Already opened")
-    def bturn(self,b):
+
+    def turn_(self, b):
         self.turn()
         self.player.world.redraw()
-    def open(self):
-        if self.status and self.player.aether >= self.costOpen:
-            self.player.aether -= self.costOpen
-            self.change_status(0)
-        else:
-            if self.status: log("Not enough aether")
-            else: log("Already opened")
-    def bopen(self,b):
-        self.open()
-        self.player.world.redraw()
+
     def set_spell(self, c):
         if self.opened or self.opentmp:
             if self.spell is None:
@@ -209,12 +242,7 @@ class Breach():
                 log("Already an spell on this breach!")
         else:
             log("Breach not opened!")
-    def end_turn(self):
-        self.opentmp = 0
-    def play(self):
-        self.spell()
-        self.player.pdiscard.add(self.spell)
-        self.spell = None
+
     def u(self):
         l = []
         if self.spell:
@@ -226,9 +254,10 @@ class Breach():
             return uA(uF(uP(l),'top'),'opened')
 
         else:
-            l.append(uB("Open: {} Ae".format(self.costOpen),self.bopen))
-            l.append(uB("Turn: {} Ae".format(self.costTurn),self.bturn))
+            l.append(uB("Open: {} Ae".format(self.costOpen), self.open_))
+            l.append(uB("Turn: {} Ae".format(self.costTurn), self.turn_))
             return uPad(uF(uP(l),'top'),left=1,right=1)
+
 
 class Player():
     def __init__(self, name):
@@ -253,20 +282,7 @@ class Player():
         for b in mages[name]['breaches']:
             log("Creating Breach status: {}".format(b))
             self.breaches.append(Breach(self,b))
-    def play(self, idxCard):
-        if len(self.phand) == 0:
-            log("No cards in hand")
-            return
-        self.phand[idxCard]()
-        log("Played card {}".format(self.phand[idxCard].name))
-        carta_hand = self.phand.draw(idxCard)
-        log("TMP CARD {}".format(carta_hand.name))
-        self.playZone.add(carta_hand)
-        return
-    def bplay(self, b, idxCard):
-        one_choice = isinstance(self.phand[idxCard].action.txt,str)
-        self.play(idxCard)
-        if one_choice: self.world.redraw()
+
     def buy(self, deck):
         if len(deck) == 0:
             log("Empty deck!!!")
@@ -277,9 +293,11 @@ class Player():
             self.pdiscard.add(deck.draw())
         else:
             log("Not enough aether to buy it")
-    def bbuy(self,b,d):
+
+    def buy_(self, b, d):
         self.buy(d)
         self.world.redraw()
+
     def buyCharge(self):
         if self.aether >= self.costCharges and self.charges < self.maxCharges:
             self.aether -= 2
@@ -287,9 +305,11 @@ class Player():
             log("Acquired charge")
         else:
             log("Action not allowed")
-    def bbuyCharge(self,b):
+
+    def buyCharge_(self, b):
         self.buyCharge()
         self.world.redraw()
+
     def end_turn(self):
         self.aether = 0
         for x in range(len(self.playZone)):
@@ -301,6 +321,26 @@ class Player():
                     self.pdeck.add(self.pdiscard.draw())
             self.phand.add(self.pdeck.draw())
         log("End of turn {}".format(self.name))
+
+    def play(self, idxCard):
+        if len(self.phand) == 0:
+            log("No cards in hand")
+            return
+        if self.phand[idxCard].type == "spell":
+            self.breaches[0].set_spell(self.phand[idxCard])
+        else:
+            self.phand[idxCard]()
+        log("Played card {}".format(self.phand[idxCard].name))
+        carta_hand = self.phand.draw(idxCard)
+        log("TMP CARD {}".format(carta_hand.name))
+        self.playZone.add(carta_hand)
+        return
+
+    def play_(self, b, idxCard):
+        one_choice = isinstance(self.phand[idxCard].action.txt,str)
+        self.play(idxCard)
+        if one_choice: self.world.redraw()
+
     def u(self):
         cb = uC([ b.u() for b in self.breaches ])
         i = uLB(urwid.SimpleFocusListWalker([
@@ -312,11 +352,12 @@ class Player():
                            uT("Deck: {} cards".format(len(self.pdeck)))
                             ])
         )
-        p1 = uP([self.playZone.u(), self.phand.u(self.bplay)])
+        p1 = uP([self.playZone.u(), self.phand.u(self.play_)])
         cp = uC([("weight", 3, p1),
                  ("weight", 1, uLineB(self.pdiscard.u_narrow(), title="{} cards".format(len(self.pdiscard))))])
         p = uLineB(uA(uP([(5 , cb), ("weight", 1, i), ("weight", 2, cp)]),"default"), title=self.name)
         return p
+
 
 class Monster():
     def __init__(self):
@@ -326,12 +367,15 @@ class Monster():
         self.deck = Deck(self)
         self.playzone = Deck(self)
         self.discard = Deck(self)
+
     def activate(self):
         for c in self.playzone:
             log("Playing {}".format(c.name))
             c()
+
     def end_turn(self):
         log("End of turn {}".format(self.name))
+
     def u(self):
         mc = uC([
             ('weight',2,uT(str(self.world.turn_order))),
@@ -340,6 +384,7 @@ class Monster():
         ])
         m = uLineB(uA(uF(mc),'default'), title=self.name)
         return m
+
 
 class World():
     def __init__(self):
@@ -355,6 +400,7 @@ class World():
         self.gravehold = 30
         for c in all_cards:
             self.allCards[c] = Card(c)
+
     def __str__(self):
         print("Life: {} Name: {}".format(self.monster.life, self.monster.name))
         print("\n")
@@ -379,6 +425,7 @@ class World():
             print(p.pdiscard)
             print("Aether: {}".format(p.aether))
         return ""
+
     def addPlayer(self, name):
         log("Added player: {}".format(name))
         p = Player(name)
@@ -386,6 +433,7 @@ class World():
         self.players.append(p)
         if len(self.players) == 1:
             self.activePlayer = p
+
     def baddPlayer(self, b, idx):
         if b.label == "OK":
             self.status = 2
@@ -393,6 +441,36 @@ class World():
             self.addPlayer(b.label)
         self.loop.widget = w.u()
         self.newGame(b)
+
+    def basicInput(self, key):
+        """
+
+        :param key:
+        :return:
+        """
+
+        if str(key) in ("Q", "q"):
+            raise urwid.ExitMainLoop()
+        elif str(key) in ("12345"):
+            self.activePlayer.buy_(None, w.buyzone[int(key) - 1])
+        elif str(key) in ("A"):
+            self.activePlayer.end_turn()
+            self.next_turn()
+        elif str(key) in ("zZ"):
+            self.activePlayer.buyCharge_(None)
+        elif str(key) in ("abcde"):
+            self.activePlayer.play_(None, ord(key) - 97)
+        elif str(key) in ("lL"):
+            if isinstance(self.loop.widget,uC):
+                self.loop.widget = urwid.Overlay(uLineB(w.log, title="Log"), w.u(),
+                                                 "center", ('relative', 60),
+                                                 "middle", ('relative', 60))
+                return
+            else:
+                self.redraw()
+        else:
+            return
+
     def create_turn(self):
         log("Players {}".format(len(self.players)))
         turn_order_list = [
@@ -403,6 +481,55 @@ class World():
         ]
         random.shuffle(turn_order_list[len(self.players)-1])
         self.turn_order = list(turn_order_list[len(self.players)-1])
+
+    def createBuyDeck(self, card):
+        import copy
+        d = Deck()
+        for x in range(10):
+            d.add(copy.deepcopy(card))
+        self.buyzone.append(d)
+        log("Created deck {} in the Buy zone".format(card.name))
+
+    def createBuyDeck_(self, b, idx):
+        if b.label == "OK":
+            self.status = CTURN
+        else:
+            if len(self.buyzone) < 9:
+                self.createBuyDeck(Card(b.label))
+            else:
+                self.status = CTURN
+        self.loop.widget = w.u()
+        self.newGame(b)
+
+    def main(self):
+        palette = [
+            ('banner', 'black', 'light gray'),
+            ('default', 'default', 'default'),
+            ('active', 'yellow', 'default'),
+            ('opened', 'black', 'yellow'), ]
+        lb = uA(uLB([uB("New Game", self.newGame)]),"default")
+        menu = uA(uLineB(lb),"active")
+        bg = urwid.SolidFill('\N{MEDIUM SHADE}')
+        self.loop = urwid.MainLoop(urwid.Overlay(menu, bg , "center", ('relative', 60), "middle", ('relative', 60)), palette,unhandled_input=self.basicInput)
+        self.loop.run()
+
+    def newGame(self, b):
+        logging.info("STARTING NEW GAME - Status: {} - Button: {}".format(self.status,b.label))
+        if self.status == CMONSTER:
+            log("CMONSTER")
+            self.popup(['Ctulhu'], self.setMonster_, title="Choose Monster", create=True)
+        elif self.status == CPLAYER:
+            log("CPLAYER")
+            self.popup([m for m in mages.keys() if m not in [p.name for p in self.players]] + ["OK"], self.baddPlayer, title="Add player {}".format(len(self.players)+1), create=True)
+        elif self.status == CBUY:
+            log("CBUY")
+            self.popup([c for c in all_cards.keys() if c not in [z.cards[0].name for z in self.buyzone]] + ["OK"], self.createBuyDeck_, title="Choose Buy Decks", create=True)
+        elif self.status == CTURN:
+            log("CTURN")
+            self.create_turn()
+            self.next_turn()
+            self.status == PTSPELLS
+            self.redraw()
 
     def next_turn(self):
         if len(self.turn_order) ==0: self.create_turn()
@@ -416,89 +543,7 @@ class World():
         else:
             self.activePlayer = self.players[pos-1]
         self.redraw()
-    def setMonster(self, monster):
-        self.monster = monster
-        monster.world = self
-        log("Added monster: {}".format(monster.name))
-    def bsetMonster(self, b, idx):
-        self.setMonster(Monster())
-        for c in monster_cards['basic']:
-            self.monster.deck.add(MCard(self.monster,c))
-        self.status = CPLAYER
-        self.newGame(b)
-    def createBuyDeck(self, card):
-        import copy
-        d = Deck()
-        for x in range(10):
-            d.add(copy.deepcopy(card))
-        self.buyzone.append(d)
-        log("Created deck {} in the Buy zone".format(card.name))
-    def bcreateBuyDeck(self, b, idx):
-        if b.label == "OK":
-            self.status = CTURN
-        else:
-            if len(self.buyzone) < 9:
-                self.createBuyDeck(Card(b.label))
-            else:
-                self.status = CTURN
-        self.loop.widget = w.u()
-        self.newGame(b)
-    def set_active_player(self,name):
-        self.activePlayer = self.players[[p.name for p in self.players].index(name)]
-        self.redraw()
-    def newGame(self, b):
-        logging.info("STARTING NEW GAME - Status: {} - Button: {}".format(self.status,b.label))
-        if self.status == CMONSTER:
-            log("CMONSTER")
-            self.popup(['Ctulhu'], self.bsetMonster, title="Choose Monster",create=True)
-        elif self.status == CPLAYER:
-            log("CPLAYER")
-            self.popup([m for m in mages.keys() if m not in [p.name for p in self.players]] + ["OK"], self.baddPlayer, title="Add player {}".format(len(self.players)+1), create=True)
-        elif self.status == CBUY:
-            log("CBUY")
-            self.popup([c for c in all_cards.keys() if c not in [z.cards[0].name for z in self.buyzone]]+ ["OK"], self.bcreateBuyDeck, title="Choose Buy Decks", create=True)
-        elif self.status == CTURN:
-            log("CTURN")
-            self.create_turn()
-            self.next_turn()
-            self.status == PTSPELLS
-            self.redraw()
-    def main(self):
-        palette = [
-            ('banner', 'black', 'light gray'),
-            ('default', 'default', 'default'),
-            ('active', 'yellow', 'default'),
-            ('opened', 'black', 'yellow'), ]
-        lb = uA(uLB([uB("New Game", self.newGame)]),"default")
-        menu = uA(uLineB(lb),"active")
-        bg = urwid.SolidFill('\N{MEDIUM SHADE}')
-        self.loop = urwid.MainLoop(urwid.Overlay(menu, bg , "center", ('relative', 60), "middle", ('relative', 60)), palette,unhandled_input=self.basicInput)
-        self.loop.run()
-    def basicInput(self, key):
-        if str(key) in ("Q", "q"):
-            raise urwid.ExitMainLoop()
-        elif str(key) in ("12345"):
-            self.activePlayer.bbuy(None,w.buyzone[int(key) - 1])
-        elif str(key) in ("A"):
-            self.activePlayer.end_turn()
-            self.next_turn()
-        elif str(key) in ("zZ"):
-            self.activePlayer.bbuyCharge(None)
-        elif str(key) in ("abcde"):
-            self.activePlayer.bplay(None,ord(key) - 97)
-        elif str(key) in ("lL"):
-            if isinstance(self.loop.widget,uC):
-                self.loop.widget = urwid.Overlay(uLineB(w.log, title="Log"), w.u(),
-                                                 "center", ('relative', 60),
-                                                 "middle", ('relative', 60))
-                return
-            else:
-                self.redraw()
-        else:
-            return
 
-    def redraw(self):
-        self.loop.widget = w.u()
     def popup(self, choices, f, title = None, create=None):
         """
         :param choices: choices for the popup
@@ -518,6 +563,26 @@ class World():
         else:
             self.loop.widget = urwid.Overlay(lb, w.u(), "center", ('relative', 60), "middle", ('relative', 60))
         return
+
+    def redraw(self):
+        self.loop.widget = w.u()
+
+    def set_active_player(self,name):
+        self.activePlayer = self.players[[p.name for p in self.players].index(name)]
+        self.redraw()
+
+    def setMonster(self, monster):
+        self.monster = monster
+        monster.world = self
+        log("Added monster: {}".format(monster.name))
+
+    def setMonster_(self, b, idx):
+        self.setMonster(Monster())
+        for c in monster_cards['basic']:
+            self.monster.deck.add(MCard(self.monster,c))
+        self.status = CPLAYER
+        self.newGame(b)
+
     def u(self):
         lb, lp = [], []
         for idx, d in enumerate(self.buyzone):
@@ -537,40 +602,49 @@ class World():
         p = uC([("weight", 4, full), ("weight", 1, w.log)])
         return p
 
-def log(txt):
-    w.log.body.contents.append(uT(txt))
-    w.log.focus_position = len(w.log.body.contents) - 1
-    # w.log.set_text(w.log.get_text()[0]+'\n'+str(txt))
-def monsterDamage(num):
-    w.monster.life -= num
-    return
-def playerDamage(player, num):
-    player.life -= num
-    return
-def modAether(player, num):
-    player.aether += num
-    return
-def ghdamage(w, damage):
-    w.gravehold -= damage
-    return
-def crystal(carta):
-    modAether(carta.owner, 1)
-def spark(carta):
-    monsterDamage(1)
-def unleash(carta):
-    log("unleash")
-def smite(carta):
-    unleash()
-    unleash()
-    ghdamage(2)
+
 def aphotic_sun(carta):
     unleash()
     unleash()
     ghdamage(2)
+
+def crystal(carta):
+    modAether(carta.owner, 1)
+
+def ghdamage(w, damage):
+    w.gravehold -= damage
+    return
+
+def log(txt):
+    w.log.body.contents.append(uT(txt))
+    w.log.focus_position = len(w.log.body.contents) - 1
+    # w.log.set_text(w.log.get_text()[0]+'\n'+str(txt))
+
 def mangleroot(carta):
     unleash()
     unleash()
     ghdamage(2)
+
+def modAether(player, num):
+    player.aether += num
+    return
+
+def monsterDamage(num):
+    w.monster.life -= num
+    return
+
+def playerDamage(player, num):
+    player.life -= num
+    return
+
+def smite(carta):
+    unleash()
+    unleash()
+    ghdamage(2)
+
+def spark(carta):
+    monsterDamage(1)
+
 def torch(carta):
     def torch_opt(b,idx):
         if idx == 0:
@@ -581,6 +655,10 @@ def torch(carta):
         return
     carta.owner.world.popup(carta.action.txt,torch_opt,title=carta.name)
     return
+
+def unleash(carta):
+    log("unleash")
+
 
 all_cards = {"Crystal": [0, Action("Gain 1 Aether", crystal),"gem"],
               "Spark": [1, Action("Deal 1 damage", spark),"spell"],
