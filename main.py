@@ -21,14 +21,16 @@ logger.info("Inici")
 
 #Turn Status
 CMONSTER = 0
-CPLAYER = 1
-CBUY = 2
-CTURN = 3
-PTSPELLS = 5
-PTPLAY = 6
-PTEND = 7
-MTSPELLS = 8
-MTEND = 9
+CPLAYER = 10
+CBUY = 20
+CTURN = 30
+PTSPELLS = 40
+PTPLAY = 50
+PTSELECTBREACH = 60
+PTSELECT = 61
+PTEND = 70
+MTSPELLS = 80
+MTEND = 90
 
 #Other Constants
 CTYPE = ["relic", "gem", "spell"]
@@ -203,10 +205,10 @@ class Breach():
         self.costTurn = self.status_list[status][2]
 
     def end_turn(self):
-            self.opentmp = 0
+        self.opentmp = None
 
     def is_open(self):
-        return self.opened or self.opentmp
+        return (self.opened or self.opentmp) and self.spell is None
 
     def open(self):
         if self.status and self.player.aether >= self.costOpen:
@@ -251,8 +253,10 @@ class Breach():
         l = []
         if self.spell:
             l.append(uT("Spell: {}".format(self.spell.name)))
-        else:
+        elif self.is_open():
             l.append(uT("Spell: -------"))
+        else:
+            l.append(uT("Spell: XXXXXXX"))
         if self.opened:
             l.append(uT("Opened Breach"))
             return uA(uF(uP(l),'top'),'opened')
@@ -324,34 +328,42 @@ class Player():
                 for y in range(len(self.pdiscard)):
                     self.pdeck.add(self.pdiscard.draw())
             self.phand.add(self.pdeck.draw())
+        for b in self.breaches:
+            b.end_turn()
         log("End of turn {}".format(self.name))
 
-    def is_playable(self,idx):
-        if self.phand[idx].type == "spell" and self.open_breaches():
-            return True
+    def get_open_breaches(self):
+        return [b for b in self.breaches if b.is_open()]
 
     def play(self, idxCard):
         if len(self.phand) == 0:
             log("No cards in hand")
             return
-        if [b for b in self.breaches if b.is_open()] and self.phand[idxCard].type == "spell":
-            card_hand = self.phand.draw(idxCard)
-            self.breaches[0].set_spell(card_hand)
+        name = self.phand[idxCard].name
+        open_breaches = self.get_open_breaches()
+        if open_breaches and self.phand[idxCard].type == "spell":
+            #Spells go to breaches
+            if len(open_breaches) == 1:
+                open_breaches[0].set_spell(self.phand.draw(idxCard))
+            else:
+                self.world.status = PTSELECTBREACH
+                self.world.popup(open_breaches + ["BACK"], self.set_breach_spell, title="Select Open breach", extra_params=idxCard)
         elif self.phand[idxCard].type in ('gem','rune'):
+            # Others go to play zone
             self.phand[idxCard]()
             card_hand = self.phand.draw(idxCard)
             self.playZone.add(card_hand)
         else:
-            log("")
-        log("Played card {}".format(self.phand[idxCard].name))
+            log("Not a valid kind of card!")
+            return
+        log("Played card {}".format(name))
         return
 
     def play_(self, b, idxCard):
-        one_choice = isinstance(self.phand[idxCard].action.txt,str)
         self.play(idxCard)
-        if one_choice: self.world.redraw()
+        self.world.redraw()
 
-    def play_breach(self,b,idx):
+    def play_from_breach(self, b, idx):
         if b.label == "OK":
             self.world.status = PTPLAY
         else:
@@ -359,13 +371,25 @@ class Player():
             list_breach_with_spell[idx].play()
         self.world.redraw()
 
+    def set_breach_spell(self, b, params):
+        if b.label == "BACK":
+            pass
+        else:
+            log("idx option:{} idx card:{}".format(params[0],params[1]))
+            self.breaches[params[0]].set_spell(self.phand.draw(params[1]))
+        self.world.status = PTPLAY
+        self.world.redraw()
+
+        return
+
     def list_spells(self):
         l = []
         for idx,b in enumerate(self.breaches):
             if b.spell is not None:
                 l.append(b.spell.name)
         if l:
-            self.world.popup(l + ['OK'], self.play_breach, title="Spells to Play")
+            self.world.popup(l + ['OK'], self.play_from_breach, title="Spells to Play")
+            self.world.status = PTSPELLS
         else:
             self.world.status = PTPLAY
             self.world.redraw()
@@ -465,7 +489,7 @@ class World():
 
     def baddPlayer(self, b, idx):
         if b.label == "OK":
-            self.status = 2
+            self.status = CBUY
         else:
             self.addPlayer(b.label)
         self.loop.widget = w.u()
@@ -480,23 +504,28 @@ class World():
 
         if str(key) in ("Q", "q"):
             raise urwid.ExitMainLoop()
-        elif str(key) in ("12345"):
-            self.activePlayer.buy_(None, w.buyzone[int(key) - 1])
-        elif str(key) in ("A"):
-            self.activePlayer.end_turn()
-            self.next_turn()
-        elif str(key) in ("zZ"):
-            self.activePlayer.buyCharge_(None)
-        elif str(key) in ("abcde"):
-            self.activePlayer.play_(None, ord(key) - 97)
         elif str(key) in ("lL"):
-            if isinstance(self.loop.widget,uC):
+            if isinstance(self.loop.widget, uC):
                 self.loop.widget = urwid.Overlay(uLineB(w.log, title="Log"), w.u(),
                                                  "center", ('relative', 60),
                                                  "middle", ('relative', 60))
                 return
             else:
                 self.redraw()
+        elif str(key) in ("A"):
+            self.activePlayer.end_turn()
+            self.next_turn()
+        elif self.activePlayer != self.monster:
+            if str(key) in ("12345"):
+                self.activePlayer.buy_(None, w.buyzone[int(key) - 1])
+            elif str(key) in ("zZ"):
+                self.activePlayer.buyCharge_(None)
+            elif str(key) in ("abcde"):
+                idx = ord(key) - 97
+                if idx < len(self.activePlayer.phand):
+                    self.activePlayer.play_(None, idx)
+                else:
+                    log("No hay carta {}".format(idx+1))
         else:
             return
 
@@ -575,7 +604,7 @@ class World():
             self.status = PTSPELLS
         self.redraw()
 
-    def popup(self, choices, f, title = None, create=None):
+    def popup(self, choices, f, title = None, create=None, extra_params=None):
         """
         :param choices: choices for the popup
         :param f: function to execute when a choice is clicked
@@ -586,7 +615,10 @@ class World():
         l = []
         for idx, c in enumerate(choices):
             #urwid.connect_signal(button, "click", f, idx)
-            l.append(uA(uB(str(c),f,idx), None, focus_map="reversed"))
+            if extra_params is not None:
+                l.append(uA(uB(str(c), f, (idx, extra_params)), None, focus_map="reversed"))
+            else:
+                l.append(uA(uB(str(c),f,idx), None, focus_map="reversed"))
         lb = uLineB(uLB(urwid.SimpleFocusListWalker(l)),title=title)
         if create:
             self.loop.widget = urwid.Overlay(lb, urwid.SolidFill('\N{MEDIUM SHADE}'), "center", ('relative', 60),
@@ -599,6 +631,8 @@ class World():
         log("Status: {}".format(self.status))
         if self.status == PTSPELLS:
             self.activePlayer.list_spells()
+        elif self.status in (PTSELECTBREACH,PTSELECT):
+            pass
         else:
             self.loop.widget = w.u()
 
@@ -630,9 +664,11 @@ class World():
                                                                            tipus.action.txt)))
         for p in self.players:
             lp.append(uA(p.u(),"active") if self.activePlayer == p else p.u())
+
         lBuy = uF(uT("NO BUY DECKS"),'middle') if len(lb) == 0 else uLB(lb)
         cPlayers = uF(uT("NO PLAYERS"),'middle') if len(lp) == 0 else uC(lp)
         bMonster = uF(uT("NO MONSTER"),'middle') if w.monster is None else (uA(w.monster.u(),'active') if w.monster == self.activePlayer else w.monster.u())
+
         full = uP([("weight", 1, bMonster), (10, lBuy), ("weight", 2, uLineB(cPlayers,title="Gravehold: {}".format(self.gravehold)))])
         p = uC([("weight", 4, full), ("weight", 1, w.log)])
         return p
@@ -672,6 +708,10 @@ def playerDamage(player, num):
     player.life -= num
     return
 
+def update(carta):
+    carta.owner.world.status = PTSPELLS
+    carta.owner.world.redraw()
+
 def smite(carta):
     unleash()
     unleash()
@@ -679,6 +719,7 @@ def smite(carta):
 
 def spark(carta):
     monsterDamage(1)
+    update(carta)
 
 def torch(carta):
     def torch_opt(b,idx):
@@ -686,9 +727,11 @@ def torch(carta):
             monsterDamage(1)
         elif idx == 1:
             modAether(carta.owner, 1)
-        carta.owner.world.redraw()
+        update(carta)
         return
+    carta.owner.world.status = PTSELECT
     carta.owner.world.popup(carta.action.txt,torch_opt,title=carta.name)
+
     return
 
 def unleash(carta):
