@@ -205,6 +205,9 @@ class Breach():
     def end_turn(self):
             self.opentmp = 0
 
+    def is_open(self):
+        return self.opened or self.opentmp
+
     def open(self):
         if self.status and self.player.aether >= self.costOpen:
             self.player.aether -= self.costOpen
@@ -323,16 +326,23 @@ class Player():
             self.phand.add(self.pdeck.draw())
         log("End of turn {}".format(self.name))
 
+    def is_playable(self,idx):
+        if self.phand[idx].type == "spell" and self.open_breaches():
+            return True
+
     def play(self, idxCard):
         if len(self.phand) == 0:
             log("No cards in hand")
             return
-        if self.phand[idxCard].type == "spell":
-            self.breaches[0].set_spell(self.phand[idxCard])
-        else:
+        if [b for b in self.breaches if b.is_open()] and self.phand[idxCard].type == "spell":
+            card_hand = self.phand.draw(idxCard)
+            self.breaches[0].set_spell(card_hand)
+        elif self.phand[idxCard].type in ('gem','rune'):
             self.phand[idxCard]()
             card_hand = self.phand.draw(idxCard)
             self.playZone.add(card_hand)
+        else:
+            log("")
         log("Played card {}".format(self.phand[idxCard].name))
         return
 
@@ -345,10 +355,11 @@ class Player():
         if b.label == "OK":
             self.world.status = PTPLAY
         else:
-            self.breaches[0].play()
+            list_breach_with_spell = [ b for b in self.breaches if b.spell is not None ]
+            list_breach_with_spell[idx].play()
         self.world.redraw()
 
-    def play_spells(self):
+    def list_spells(self):
         l = []
         for idx,b in enumerate(self.breaches):
             if b.spell is not None:
@@ -587,7 +598,7 @@ class World():
     def redraw(self):
         log("Status: {}".format(self.status))
         if self.status == PTSPELLS:
-            self.activePlayer.play_spells()
+            self.activePlayer.list_spells()
         else:
             self.loop.widget = w.u()
 
